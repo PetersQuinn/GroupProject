@@ -10,6 +10,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import IsolationForest
 from sklearn.cluster import KMeans
+from sklearn.neighbors import LocalOutlierFactor
 from tensorflow.keras import layers
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -172,7 +173,6 @@ N_CLUSTERS = 8
 kmeans = KMeans(n_clusters=N_CLUSTERS, random_state=42, n_init=10)
 kmeans.fit(X_train_scaled)
 
-# assign clusters
 test_clusters = kmeans.predict(X_test_scaled)
 centroids = kmeans.cluster_centers_
 
@@ -199,10 +199,43 @@ print(
     .head(10)
 )
 
+print("\n[extra] Fitting Local Outlier Factor and computing anomaly scores...")
+
+lof = LocalOutlierFactor(
+    n_neighbors=20,
+    novelty=True
+)
+lof.fit(X_train_scaled)
+
+lof_scores = -lof.score_samples(X_test_scaled)
+lof_threshold = np.percentile(lof_scores, PERC)
+lof_is_outlier = lof_scores >= lof_threshold
+
+addr_scores_lof = pd.DataFrame(
+    {
+        "address": X_test.index,
+        "lof_score": lof_scores,
+        "lof_is_outlier": lof_is_outlier,
+    }
+).set_index("address")
+
+print("LOF outlier flag counts:")
+print(addr_scores_lof["lof_is_outlier"].value_counts())
+
+print("\nTop 10 by LOF anomaly score:")
+print(
+    addr_scores_lof.sort_values("lof_score", ascending=False)
+    .head(10)
+)
+
+addr_scores_lof.reset_index().to_csv("address_lof_scores.csv", index=False)
+print("Saved LOF scores to address_lof_scores.csv")
+
 combined = (
     addr_scores_ae.set_index("address")
     .join(addr_scores_if, how="left")
     .join(addr_scores_km, how="left")
+    .join(addr_scores_lof, how="left")
 )
 
 combined.reset_index().to_csv("address_unsupervised_scores_all.csv", index=False)
@@ -212,17 +245,31 @@ print("\nMethod agreement on test addresses:")
 print("AE outliers:", combined["ae_is_outlier"].sum())
 print("IF outliers:", combined["if_is_outlier"].sum())
 print("KM outliers:", combined["km_is_outlier"].sum())
+print("LOF outliers:", combined["lof_is_outlier"].sum())
 
 both_ae_if = (combined["ae_is_outlier"] & combined["if_is_outlier"]).sum()
 both_ae_km = (combined["ae_is_outlier"] & combined["km_is_outlier"]).sum()
 both_if_km = (combined["if_is_outlier"] & combined["km_is_outlier"]).sum()
+both_ae_lof = (combined["ae_is_outlier"] & combined["lof_is_outlier"]).sum()
+both_if_lof = (combined["if_is_outlier"] & combined["lof_is_outlier"]).sum()
+both_km_lof = (combined["km_is_outlier"] & combined["lof_is_outlier"]).sum()
 all_three = (
     combined["ae_is_outlier"]
     & combined["if_is_outlier"]
     & combined["km_is_outlier"]
 ).sum()
+all_four = (
+    combined["ae_is_outlier"]
+    & combined["if_is_outlier"]
+    & combined["km_is_outlier"]
+    & combined["lof_is_outlier"]
+).sum()
 
 print(f"Overlap AE ∩ IF: {both_ae_if}")
 print(f"Overlap AE ∩ KM: {both_ae_km}")
 print(f"Overlap IF ∩ KM: {both_if_km}")
+print(f"Overlap AE ∩ LOF: {both_ae_lof}")
+print(f"Overlap IF ∩ LOF: {both_if_lof}")
+print(f"Overlap KM ∩ LOF: {both_km_lof}")
 print(f"Overlap AE ∩ IF ∩ KM: {all_three}")
+print(f"Overlap AE ∩ IF ∩ KM ∩ LOF: {all_four}")
