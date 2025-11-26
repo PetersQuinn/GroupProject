@@ -24,7 +24,6 @@ WHITELIST = {
     "0xdef171fe48cf0115b1d80b88dc8eab59176fee57",
     # CowSwap settlement
     "0x9008d19f58aabd9ed0d60971565aa8510560ab41",
-    # Known splitter/relayer seen in many datasets (e.g., 1inch helper)
     "0x74de5d4fcbf63e00296fd95d33236b9794016631",
 }
 
@@ -236,14 +235,10 @@ import matplotlib.pyplot as plt
 feat_matrix = X[feature_cols].astype(float).fillna(0.0).values
 scores = X["anomaly_score"].values
 
-# Optional: downsample for faster plotting if you have millions of rows
 MAX_POINTS = 50000
 if len(feat_matrix) > MAX_POINTS:
-    # sample without replacement but preserve highest-risk points
-    # 1) take all of the top high-score points
     top_n = min(5000, len(feat_matrix))
     top_idx = np.argsort(scores)[-top_n:]
-    # 2) sample the rest
     remaining_idx = np.setdiff1d(np.arange(len(feat_matrix)), top_idx)
     rng = np.random.default_rng(42)
     sample_rest = rng.choice(remaining_idx, size=MAX_POINTS - top_n, replace=False)
@@ -252,7 +247,6 @@ if len(feat_matrix) > MAX_POINTS:
     feat_matrix = feat_matrix[keep_idx]
     scores = scores[keep_idx]
 
-# Embed to 2D using UMAP
 umap = UMAP(
     n_neighbors=30,
     min_dist=0.1,
