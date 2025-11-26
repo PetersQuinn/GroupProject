@@ -227,3 +227,56 @@ print("Saved: address_risk.csv")
 
 print("\nTop suspicious addresses (by combined_risk):")
 print(addr.sort_values("combined_risk", ascending=False).head(20).to_string(index=False, max_colwidth=80))
+
+
+from umap import UMAP
+import matplotlib.pyplot as plt
+
+
+feat_matrix = X[feature_cols].astype(float).fillna(0.0).values
+scores = X["anomaly_score"].values
+
+# Optional: downsample for faster plotting if you have millions of rows
+MAX_POINTS = 50000
+if len(feat_matrix) > MAX_POINTS:
+    # sample without replacement but preserve highest-risk points
+    # 1) take all of the top high-score points
+    top_n = min(5000, len(feat_matrix))
+    top_idx = np.argsort(scores)[-top_n:]
+    # 2) sample the rest
+    remaining_idx = np.setdiff1d(np.arange(len(feat_matrix)), top_idx)
+    rng = np.random.default_rng(42)
+    sample_rest = rng.choice(remaining_idx, size=MAX_POINTS - top_n, replace=False)
+
+    keep_idx = np.concatenate([top_idx, sample_rest])
+    feat_matrix = feat_matrix[keep_idx]
+    scores = scores[keep_idx]
+
+# Embed to 2D using UMAP
+umap = UMAP(
+    n_neighbors=30,
+    min_dist=0.1,
+    metric="euclidean",
+    random_state=42,
+)
+embedding = umap.fit_transform(feat_matrix)
+
+# Plot: each point is a transfer, colored by anomaly score
+plt.figure(figsize=(8, 6))
+scatter = plt.scatter(
+    embedding[:, 0],
+    embedding[:, 1],
+    s=5,
+    c=scores,
+)
+cbar = plt.colorbar(scatter)
+cbar.set_label("Anomaly score (IsolationForest)", rotation=270, labelpad=15)
+
+plt.title("Ethereum transfers in graph-augmented feature space\ncolored by anomaly score")
+plt.xlabel("UMAP-1")
+plt.ylabel("UMAP-2")
+plt.tight_layout()
+plt.savefig("anomaly_landscape.png", dpi=300)
+plt.show()
+
+print('Saved 2D anomaly landscape figure as "anomaly_landscape.png"')
