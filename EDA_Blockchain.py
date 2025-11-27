@@ -199,7 +199,7 @@ out_cols = [
 transfers[out_cols].to_parquet("transfers_verified_small.parquet", index=False)
 
 
-print("\n[7/9] Slide‑ready stats:")
+print("\n[7/9] Stats:")
 print("Rows:", f"{len(transfers):,}")
 print("Unique hashes:", f"{transfers['hash'].nunique():,}")
 print("Unique senders:", f"{transfers['from'].nunique():,}")
@@ -207,7 +207,7 @@ print("Unique receivers:", f"{transfers['to'].nunique():,}")
 print("Unique tokens (asset):", f"{transfers['asset'].nunique():,}")
 print("Unique contracts:", f"{transfers['rawContract.address'].nunique():,}")
 
-print("\nValue stats (finite, 99.9% winsorized):")
+print("\nValue stats:")
 print(pd.Series(v_ws).describe(percentiles=[0.5,0.9,0.99]))
 
 print("\n[8/9] New plots saved to ./eda_plots:")
