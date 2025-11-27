@@ -6,7 +6,7 @@ from sklearn.preprocessing import StandardScaler
 
 PATH = "transfers_verified_small.parquet"
 TOP_K = 30             # how many suspicious transfers to print
-SUBSAMPLE = None       # e.g., 300000 to speed up if needed, else None (use all)
+SUBSAMPLE = None       
 
 # Whitelist: well-known routers/aggregators/exchanges/infra (public mainnet addresses)
 #reduce false positives from structurally-weird-but-benign hubs
@@ -27,13 +27,9 @@ WHITELIST = {
     "0x74de5d4fcbf63e00296fd95d33236b9794016631",
 }
 
-# Sharding controls
-USE_TIME_SHARD = True  # set False to shard only by token_contract
-WINDOW_HOURS = 6       # time window size when sharding by time (hyperparameter)
-
-# ---------------------------
-# 1) Load & basic clean
-# ---------------------------
+#Sharding controls
+USE_TIME_SHARD = True  #set False to shard only by token_contract
+WINDOW_HOURS = 6       #time window size when sharding by time (hyperparameter)
 
 df = pd.read_parquet(PATH)
 
@@ -64,17 +60,12 @@ df["token_contract"] = df["token_contract"].astype("string").fillna("UNK")
 if SUBSAMPLE:
     df = df.head(SUBSAMPLE)
 
-# ---------------------------
-# 2) Build directed address graph (aggregate parallel edges)
-# ---------------------------
 
 edge_agg = df.groupby(["src","dst"], as_index=False)["value"].sum().rename(columns={"value":"w"})
 G = nx.DiGraph()
 G.add_weighted_edges_from(edge_agg[["src","dst","w"]].itertuples(index=False, name=None))
 
-# ---------------------------
-# 3) Node-level graph stats
-# ---------------------------
+#Node-level graph stats
 
 deg_in   = dict(G.in_degree())
 deg_out  = dict(G.out_degree())
@@ -86,23 +77,16 @@ try:
 except Exception:
     pr = {n: 0.0 for n in G.nodes()}
 
-# Optional: simple clustering on undirected projection (cheap proxy)
 UG = G.to_undirected()
 try:
     cc = nx.clustering(UG, weight="weight")
 except Exception:
     cc = {n: 0.0 for n in G.nodes()}
-
-# ---------------------------
-# 4) Edge (transfer) feature table
-# ---------------------------
+#Edge (transfer) feature table
 
 X = df.copy()
-
-
 def m(series, dct, default=0.0):
     return series.map(dct).fillna(default)
-
 # endpoint stats
 X["src_deg_in"]  = m(X["src"], deg_in)
 X["src_deg_out"] = m(X["src"], deg_out)
@@ -130,7 +114,6 @@ X["is_erc20"]  = (cat_norm == "erc20").astype("int8")
 X["is_erc721"] = (cat_norm == "erc721").astype("int8")
 X["is_eth"]    = (asset_norm == "ETH").astype("int8")
 
-# per-(asset,token_contract) normalization to capture unusual amount
 grp = X.groupby(["asset","token_contract"])["value"]
 X["value_mu"] = grp.transform("mean")
 X["value_sd"] = grp.transform("std").replace(0, np.nan)
@@ -146,10 +129,6 @@ feature_cols = [
     "is_erc20","is_erc721","is_eth",
     "hour","dow"
 ]
-
-# ---------------------------
-# 5) Sharded unsupervised anomaly scoring (IsolationForest)
-# ---------------------------
 
 # Whitelist filtering: drop edges where either endpoint is infra
 mask_infra = X["src"].isin(WHITELIST) | X["dst"].isin(WHITELIST)
@@ -182,9 +161,7 @@ for keys, idx in X.groupby(shard_cols, sort=False).groups.items():
 
 X["anomaly_score"] = X["anomaly_score"].fillna(0.0)
 
-# ---------------------------
 #Print top suspicious transfers & save CSVs
-# ---------------------------
 
 top_edges = X.sort_values("anomaly_score", ascending=False).head(TOP_K)
 cols_show = [
